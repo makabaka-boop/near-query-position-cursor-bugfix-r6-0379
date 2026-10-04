@@ -763,14 +763,22 @@ export class DocumentStore {
       results: this.#materializePage(snapshot, visible, evidenceById, pageIds),
     };
 
-    const { removedSnapshot } = this.#removeCursorEntry(entry);
+    // Issue the replacement cursor (and its snapshot reference) before the
+    // consumed one is removed, so auto-pinned snapshots with ownerRefs 0 are
+    // not closed between pages. The query, limit and snapshot stay identical
+    // to the first page.
+    let removedSnapshot = null;
     if (afterIndex + 1 + limit < ids.length) {
       result.nextCursor = this._issueCursor(snapshot, {
         query,
         limit,
         afterId: pageIds.at(-1),
       });
-    } else if (removedSnapshot) {
+      ({ removedSnapshot } = this.#removeCursorEntry(entry));
+    } else {
+      ({ removedSnapshot } = this.#removeCursorEntry(entry));
+    }
+    if (removedSnapshot) {
       setImmediate(() => {
         this.#withLock(() =>
           this.#reclaimUnreferencedSegments("cursorRelease"),

@@ -55,7 +55,17 @@ function hasConsecutive(visibleDoc, phraseTerms) {
 
 function chooseCandidateTerm(plan, visible) {
   const requiredTerms = [
-    ...(plan.near ?? []).map((c) => ({ term: c.terms[0], phrase: null })),
+    ...(plan.near ?? []).map((clause) => {
+      // Any term of the clause is guaranteed present for a hit; prefilter on
+      // the rarest distinct one for efficiency (repeated terms still consume
+      // distinct occurrences, checked later by nearEvidence).
+      const term = [...new Set(clause.terms)].sort((left, right) => {
+        const leftCount = countTermDocs(visible, left);
+        const rightCount = countTermDocs(visible, right);
+        return leftCount - rightCount || left.localeCompare(right);
+      })[0];
+      return { term, phrase: null };
+    }),
     ...plan.terms.map((term) => ({ term, phrase: null })),
     ...plan.phrases.map((phrase) => ({ term: phrase.terms[0], phrase })),
   ];
@@ -63,16 +73,21 @@ function chooseCandidateTerm(plan, visible) {
   let best = null;
   let bestCount = Infinity;
   for (const item of requiredTerms) {
-    let count = 0;
-    for (const doc of visible.values()) {
-      if (termPositions(doc, item.term).length > 0) count++;
-    }
+    const count = countTermDocs(visible, item.term);
     if (count < bestCount) {
       best = item;
       bestCount = count;
     }
   }
   return best;
+}
+
+function countTermDocs(visible, term) {
+  let count = 0;
+  for (const doc of visible.values()) {
+    if (termPositions(doc, term).length > 0) count++;
+  }
+  return count;
 }
 
 export function matchQuery(visibleMap, rawQuery) {
@@ -131,6 +146,12 @@ export function matchQuery(visibleMap, rawQuery) {
     }
     for (const phrase of plan.phrases) {
       for (const term of phrase.terms) {
+        if (!(term in termEvidence))
+          termEvidence[term] = termPositions(doc, term);
+      }
+    }
+    for (const clause of plan.near ?? []) {
+      for (const term of clause.terms) {
         if (!(term in termEvidence))
           termEvidence[term] = termPositions(doc, term);
       }

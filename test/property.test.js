@@ -29,6 +29,7 @@ const PHRASES = [
   "gamma delta",
   "fox log",
 ];
+const NEAR_VOCAB = ["red", "fox", "quick", "brown", "dog", "log"];
 const dirs = [];
 
 function bodyFor(random) {
@@ -39,16 +40,32 @@ function bodyFor(random) {
   ).join(" ");
 }
 
+function randomNear(random) {
+  const size = 2 + Math.floor(random() * 3);
+  const terms = Array.from(
+    { length: size },
+    () => NEAR_VOCAB[Math.floor(random() * NEAR_VOCAB.length)],
+  );
+  return {
+    terms,
+    maxGap: Math.floor(random() * 3),
+    ordered: random() < 0.5,
+  };
+}
+
 function randomQuery(random) {
   const terms = [];
   const phrases = [];
+  const near = [];
   for (const term of VOCAB.slice(4)) {
     if (random() < 0.28) terms.push(term);
   }
   for (const phrase of PHRASES) {
     if (random() < 0.22) phrases.push(phrase);
   }
-  return { terms, phrases };
+  if (random() < 0.6) near.push(randomNear(random));
+  if (random() < 0.25) near.push(randomNear(random));
+  return { terms, phrases, near };
 }
 
 test("randomized snapshots and pagination match direct scan through flush and merge", async () => {
@@ -56,7 +73,7 @@ test("randomized snapshots and pagination match direct scan through flush and me
   dirs.push(path);
   const store = await DocumentStore.open({ directory: path, maxDocuments: 80 });
   const model = new ReferenceModel();
-  const random = lcg(20261001);
+  const random = lcg(Number(process.env.PROPERTY_SEED) || 20261001);
   const revisions = new Map();
   const liveIds = new Set();
   const heldSnapshots = [];

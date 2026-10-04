@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeQuery, tokenize } from "../src/index.js";
+import { nearEvidence } from "../src/near.js";
 
 export function makeTempDir(label) {
   return mkdtempSync(join(tmpdir(), `doc-store-${label}-`));
@@ -46,7 +47,13 @@ export class ReferenceModel {
     const docs = new Map();
     for (const op of this.operations) {
       if (op.sequence > sequence) break;
-      docs.set(op.id, { ...op });
+      docs.set(op.id, {
+        id: op.id,
+        body: op.type === "delete" ? null : op.body,
+        revision: op.revision,
+        sequence: op.sequence,
+        deleted: op.type === "delete",
+      });
     }
     return docs;
   }
@@ -110,13 +117,31 @@ export class ReferenceModel {
       }
       if (!ok) continue;
 
+      // Near clauses: proximity over distinct token occurrences of the query
+      // term multiset, evaluated with the same matcher as the store.
+      const near = (plan.near ?? []).map((clause) => ({
+        clause,
+        windows: nearEvidence({ postings: byTerm }, clause),
+      }));
+      if (near.some((item) => item.windows.length === 0)) continue;
+      for (const item of near) {
+        for (const term of item.clause.terms) {
+          terms[term] = byTerm.get(term) ?? [];
+        }
+      }
+
+      const evidence =
+        plan.terms.length || plan.phrases.length || near.length
+          ? near.length
+            ? { terms, phrases, near }
+            : { terms, phrases }
+          : null;
       matched.set(doc.id, {
         id: doc.id,
         revision: doc.revision,
         sequence: doc.sequence,
         body: doc.body,
-        evidence:
-          plan.terms.length || plan.phrases.length ? { terms, phrases } : null,
+        evidence,
       });
     }
     return matched;
