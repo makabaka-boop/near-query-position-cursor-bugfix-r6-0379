@@ -135,6 +135,12 @@ export function matchQuery(visibleMap, rawQuery) {
           termEvidence[term] = termPositions(doc, term);
       }
     }
+    for (const clause of plan.near ?? []) {
+      for (const term of clause.terms) {
+        if (!(term in termEvidence))
+          termEvidence[term] = termPositions(doc, term);
+      }
+    }
 
     const near = (plan.near ?? []).map((clause) => ({
       clause,

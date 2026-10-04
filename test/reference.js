@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeQuery, tokenize } from "../src/index.js";
+import { nearEvidence } from "../src/near.js";
 
 export function makeTempDir(label) {
   return mkdtempSync(join(tmpdir(), `doc-store-${label}-`));
@@ -110,13 +111,34 @@ export class ReferenceModel {
       }
       if (!ok) continue;
 
+      const near = [];
+      for (const clause of plan.near ?? []) {
+        const windows = nearEvidence({ postings: byTerm }, clause);
+        if (!windows.length) {
+          ok = false;
+          break;
+        }
+        near.push({ clause, windows });
+        for (const term of clause.terms) {
+          if (!(term in terms)) terms[term] = byTerm.get(term) ?? [];
+        }
+      }
+      if (!ok) continue;
+
+      const hasEvidence =
+        plan.terms.length || plan.phrases.length || (plan.near ?? []).length;
       matched.set(doc.id, {
         id: doc.id,
         revision: doc.revision,
         sequence: doc.sequence,
         body: doc.body,
-        evidence:
-          plan.terms.length || plan.phrases.length ? { terms, phrases } : null,
+        evidence: hasEvidence
+          ? {
+              terms,
+              phrases,
+              ...((plan.near ?? []).length ? { near } : {}),
+            }
+          : null,
       });
     }
     return matched;

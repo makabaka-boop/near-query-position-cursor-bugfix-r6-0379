@@ -763,14 +763,19 @@ export class DocumentStore {
       results: this.#materializePage(snapshot, visible, evidenceById, pageIds),
     };
 
-    const { removedSnapshot } = this.#removeCursorEntry(entry);
-    if (afterIndex + 1 + limit < ids.length) {
+    // Issue the replacement cursor while this cursor still pins the snapshot:
+    // otherwise removing this entry can release and delete the snapshot
+    // before the next cursor is stored, failing mid-way paging.
+    const hasMore = afterIndex + 1 + limit < ids.length;
+    if (hasMore) {
       result.nextCursor = this._issueCursor(snapshot, {
         query,
         limit,
         afterId: pageIds.at(-1),
       });
-    } else if (removedSnapshot) {
+    }
+    const { removedSnapshot } = this.#removeCursorEntry(entry);
+    if (!hasMore && removedSnapshot) {
       setImmediate(() => {
         this.#withLock(() =>
           this.#reclaimUnreferencedSegments("cursorRelease"),

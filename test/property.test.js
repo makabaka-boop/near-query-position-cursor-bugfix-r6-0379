@@ -42,13 +42,26 @@ function bodyFor(random) {
 function randomQuery(random) {
   const terms = [];
   const phrases = [];
+  const near = [];
   for (const term of VOCAB.slice(4)) {
     if (random() < 0.28) terms.push(term);
   }
   for (const phrase of PHRASES) {
     if (random() < 0.22) phrases.push(phrase);
   }
-  return { terms, phrases };
+  if (random() < 0.7) {
+    const clauseLength = 2 + Math.floor(random() * 3);
+    const pool = VOCAB.slice(4);
+    near.push({
+      terms: Array.from(
+        { length: clauseLength },
+        () => pool[Math.floor(random() * pool.length)],
+      ),
+      maxGap: Math.floor(random() * 3),
+      ordered: random() < 0.5,
+    });
+  }
+  return { terms, phrases, near };
 }
 
 test("randomized snapshots and pagination match direct scan through flush and merge", async () => {
